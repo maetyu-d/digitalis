@@ -53,7 +53,7 @@ Menkman, R. (2011). [The Glitch Moment(um)](https://networkcultures.org/_uploads
 
 ## License
 
-Do what you like with these, and feel free to show or credit me if you make anything cool, but I give free use of them as is, as neither gift nor curse, and without guarantee or assuming liability of any kind. Or in the more technical language of the Unlicense:
+Do what you like with these, and feel free to show or credit me if you make anything cool, but I give free use of them as is and as they are. They're hopefully more gift than curse, but, whatever happens, there is no express or implied liability or guarantee of any kind on my part. To put it in the more technical language of the Unlicense:
 
 > This is free and unencumbered software released into the public domain.
 
