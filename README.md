@@ -38,7 +38,7 @@ Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3).
 
 ## Build
 
-This project uses CMake + JUCE. Build outputs are generated under `build/`, and packaged artifacts can be found in `Releases/`.
+This project uses CMake + JUCE. Build outputs are generated under `build/`, and packaged artifacts can be found in `Releases/`. They have been tested on Mac OS 13.7.7.
 
 ## Useful Reading
 
