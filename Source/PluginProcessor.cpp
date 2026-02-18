@@ -264,9 +264,18 @@ void DigitalisAudioProcessor::releaseResources()
 
 bool DigitalisAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    return layouts.getMainInputChannelSet() == layouts.getMainOutputChannelSet()
-        && (layouts.getMainOutputChannelSet() == juce::AudioChannelSet::mono()
-            || layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo());
+    const auto inSet = layouts.getMainInputChannelSet();
+    const auto outSet = layouts.getMainOutputChannelSet();
+
+    if (inSet.isDisabled() || outSet.isDisabled())
+        return false;
+
+    const auto inChannels = inSet.size();
+    const auto outChannels = outSet.size();
+
+    // Support mono, stereo, and mono->stereo inserts so hosts can pick the track format.
+    return (inChannels == 1 && (outChannels == 1 || outChannels == 2))
+        || (inChannels == 2 && outChannels == 2);
 }
 
 void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -275,6 +284,7 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
 
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+    const bool monoToStereo = (totalNumInputChannels == 1 && totalNumOutputChannels >= 2);
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
@@ -290,6 +300,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processFloatingPointCollapse(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 2)
@@ -297,6 +310,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processNyquistDestroyer(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 3)
@@ -304,6 +320,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processBufferGlitchEngine(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 4)
@@ -311,6 +330,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processAutomationQuantiser(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 5)
@@ -318,6 +340,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processStreamingArtifactGenerator(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 6)
@@ -325,6 +350,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processFFTBrutalist(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 7)
@@ -332,6 +360,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processOverclockFailure(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 8)
@@ -339,6 +370,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processDeterministicMachine(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 9)
@@ -346,6 +380,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processClassicBufferStutter(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
     if (kPluginIndex == 10)
@@ -353,6 +390,9 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
         processMelodicSkippingEngine(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        if (monoToStereo)
+            for (auto ch = 1; ch < totalNumOutputChannels; ++ch)
+                buffer.copyFrom(ch, 0, buffer, 0, 0, buffer.getNumSamples());
         return;
     }
 
