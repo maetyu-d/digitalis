@@ -205,7 +205,11 @@ DigitalisAudioProcessorEditor::DigitalisAudioProcessorEditor(DigitalisAudioProce
         { "output", "Output" }
     }};
     for (size_t i = 0; i < globals.size(); ++i)
+    {
         setupControl(globals[i], globalSpec[i]);
+        globals[i].knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 24);
+        globals[i].knob.setMouseDragSensitivity(170);
+    }
 
     const auto advancedSpec = getAdvancedLayout();
     for (size_t i = 0; i < advanced.size(); ++i)
@@ -287,7 +291,8 @@ void DigitalisAudioProcessorEditor::resized()
         auto macroLabelArea = area.removeFromTop(24);
         macroTitle.setBounds(macroLabelArea.removeFromLeft(200));
 
-        auto macroGrid = area.removeFromTop(380);
+        const auto macroGridHeight = juce::jmax(260, area.getHeight() - (24 + 10 + 120));
+        auto macroGrid = area.removeFromTop(macroGridHeight);
         const int cellW = macroGrid.getWidth() / 4;
         const int cellH = macroGrid.getHeight() / 2;
 
@@ -305,14 +310,14 @@ void DigitalisAudioProcessorEditor::resized()
         area.removeFromTop(10);
         globalTitle.setBounds(area.removeFromTop(24).removeFromLeft(150));
 
-        auto globalRow = area.removeFromTop(140);
+        auto globalRow = area.removeFromTop(juce::jmax(120, area.getHeight()));
         const int globalW = globalRow.getWidth() / 4;
         for (int i = 0; i < 4; ++i)
         {
-            auto cell = juce::Rectangle<int>(globalRow.getX() + i * globalW, globalRow.getY(), globalW, globalRow.getHeight()).reduced(8);
+            auto cell = juce::Rectangle<int>(globalRow.getX() + i * globalW, globalRow.getY(), globalW, globalRow.getHeight()).reduced(6);
             auto captionArea = cell.removeFromTop(24);
             globals[(size_t) i].caption.setBounds(captionArea);
-            globals[(size_t) i].knob.setBounds(cell.reduced(10, 0));
+            globals[(size_t) i].knob.setBounds(cell.reduced(4, 0));
         }
     }
     else if (currentPage == Page::advanced)
