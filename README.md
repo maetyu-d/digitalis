@@ -34,7 +34,7 @@ Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3).
    A classic rhythmic stutter effect with controllable slice capture, repeats, reverses, and timing jitter.
 
 10. **MelodicSkippingEngine**  
-    Diskont-era inspired melodic skipping/glitch playback with longer scratched-CD-style segment jumps.
+    Diskont-era Oval-inspired melodic skipping/glitch playback with longer scratched-CD-style segment jumps.
 
 ## Build
 
