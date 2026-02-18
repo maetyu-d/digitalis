@@ -39,3 +39,18 @@ Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3).
 ## Build
 
 This project uses CMake + JUCE. Build outputs are generated under `build/`, and packaged artifacts can be found in `Releases/`.
+
+## Useful Reading
+
+You don't need to read these to use the plugin suite, but the following provide some useful background to the ideas behind it:
+
+Cascone, K., & Jandrić, P. (2021). [The Failure of Failure: Postdigital Aesthetics Against Techno-mystification](https://pmc.ncbi.nlm.nih.gov/articles/PMC7811792/). Postdigital science and education, 3(2), 566–574. https://doi.org/10.1007/s42438-020-00209-1
+
+Cramer, F. and Jandrić, P. (2001). [Postdigital: A Term That Sucks but Is Useful](https://monoskop.org/images/e/e0/Cramer_Florian_Jandric_Petar_2021_Postdigital_A_Term_That_Sucks_but_Is_Useful.pdf). Postdigital Science and Education. https://doi.org/10.1007/s42438-021-00225-9
+
+Menkman, R. (2011). [The Glitch Moment(um)](https://networkcultures.org/_uploads/NN%234_RosaMenkman.pdf). Network notebooks, Institute of Network Cultures.
+
+
+## License
+
+Do what you like with these, and feel free to show or credit me if you make anything cool, but I give free use of them as is, as neither gift nor curse, and without guarantee of any kind.
