@@ -1,6 +1,8 @@
 # Digitalis
 
-Digitalis is a suite of intentionally hyper-digital audio effects built with JUCE (AU + VST3).
+![](https://github.com/maetyu-d/digitalis/blob/main/Screenshot%202026-02-18%20at%2003.00.12.png)
+
+Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3).
 
 ## Plugins
 
