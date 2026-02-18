@@ -2,7 +2,7 @@
 
 ![](https://github.com/maetyu-d/digitalis/blob/main/Screenshot%202026-02-18%20at%2003.00.12.png)
 
-Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3).
+Digitalis is a suite of hyper-digital audio effects built with JUCE (AU + VST3). They're a little bit Cagean, and generally microsound-inspired (Kim Cascone, Marcus Popp, Carsten Nicolai) (although those techniques are only specifically referenced in 2/10 of the plugins), but, essentially, they give you lots of new ways to mess up, dirty, and corrupt pristine audio.
 
 ## Plugins
 
