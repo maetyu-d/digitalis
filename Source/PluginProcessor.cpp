@@ -19,6 +19,8 @@ juce::String pluginTag()
         case 6: return "FFT Brutalist";
         case 7: return "Overclock Failure";
         case 8: return "Deterministic Machine";
+        case 9: return "Classic Buffer Stutter";
+        case 10: return "Melodic Skipping Engine";
         default: return "Digitalis";
     }
 }
@@ -84,6 +86,8 @@ float defaultAutoLevelPercent()
         case 6: return 36.0f; // FFT Brutalist
         case 7: return 50.0f; // Overclock Failure
         case 8: return 48.0f; // Deterministic Machine
+        case 9: return 50.0f; // Classic Buffer Stutter
+        case 10: return 47.0f; // Melodic Skipping Engine
         default: return 45.0f;
     }
 }
@@ -100,6 +104,8 @@ float defaultSafetyPercent()
         case 6: return 76.0f;
         case 7: return 74.0f;
         case 8: return 63.0f;
+        case 9: return 66.0f;
+        case 10: return 68.0f;
         default: return 62.0f;
     }
 }
@@ -116,6 +122,8 @@ float defaultOutputTrimDb()
         case 6: return -10.0f;
         case 7: return -10.0f;
         case 8: return -16.1f;
+        case 9: return -10.0f;
+        case 10: return -10.7f;
         default: return 0.0f;
     }
 }
@@ -132,6 +140,8 @@ float targetRmsForPlugin()
         case 6: return 0.145f;
         case 7: return 0.155f;
         case 8: return 0.165f;
+        case 9: return 0.17f;
+        case 10: return 0.17f;
         default: return 0.18f;
     }
 }
@@ -224,6 +234,25 @@ void DigitalisAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
     dmHashCounter = 0;
     dmHashState = 2166136261u;
     dmStateSmoother = 0.0f;
+    const auto stutterMax = juce::jmax(256, static_cast<int>(0.5 * currentSampleRate));
+    for (auto& slice : stutterSliceBuffer)
+        slice.assign((size_t) stutterMax, 0.0f);
+    stutterCapturePos = { 0, 0 };
+    stutterPlayPos = { 0, 0 };
+    stutterRepeatsRemaining = { 0, 0 };
+    stutterIntervalCounter = { 1, 1 };
+    stutterIsCapturing = { false, false };
+    stutterIsPlaying = { false, false };
+    stutterIsReverse = { false, false };
+    const auto mskSize = juce::jmax(2048, static_cast<int>(2.5 * currentSampleRate));
+    for (auto& b : mskBuffer)
+        b.assign((size_t) mskSize, 0.0f);
+    mskWritePos = { 0, 0 };
+    mskPlayPos = { 0.0f, 0.0f };
+    mskRemaining = { 0, 0 };
+    mskRate = { 1.0f, 1.0f };
+    mskDirection = { 1, 1 };
+    mskBlurState = { 0.0f, 0.0f };
     postDcPrevInput = { 0.0f, 0.0f };
     postDcPrevOutput = { 0.0f, 0.0f };
     postAutoLevelGain = 1.0f;
@@ -308,6 +337,20 @@ void DigitalisAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juc
     if (kPluginIndex == 8)
     {
         processDeterministicMachine(buffer);
+        applyPostSafety(buffer);
+        dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        return;
+    }
+    if (kPluginIndex == 9)
+    {
+        processClassicBufferStutter(buffer);
+        applyPostSafety(buffer);
+        dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
+        return;
+    }
+    if (kPluginIndex == 10)
+    {
+        processMelodicSkippingEngine(buffer);
         applyPostSafety(buffer);
         dryWet.mixWetSamples(juce::dsp::AudioBlock<float>(buffer));
         return;
@@ -511,6 +554,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout DigitalisAudioProcessor::cre
         params.push_back(std::make_unique<juce::AudioParameterChoice>("jumpRule", "State Jump Rule", juce::StringArray { "Sequential", "Hash", "Threshold" }, 1));
         params.push_back(std::make_unique<juce::AudioParameterFloat>("memory", "Memory", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 40.0f));
     }
+    else if (kPluginIndex == 9)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("amount", "Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 54.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("rateHz", "Stutter Rate", juce::NormalisableRange<float>(0.25f, 24.0f, 0.001f, 0.35f), 6.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("sliceMs", "Slice Length", juce::NormalisableRange<float>(10.0f, 250.0f, 0.1f, 0.4f), 52.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("repeats", "Repeats", juce::NormalisableRange<float>(1.0f, 16.0f, 1.0f), 4.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("reverse", "Reverse Chance", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 18.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("timingJitter", "Timing Jitter", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 12.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("duck", "Dry Duck", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 34.0f));
+    }
+    else if (kPluginIndex == 10)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("skip", "Skip Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 58.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("jumpRate", "Jump Rate", juce::NormalisableRange<float>(0.2f, 18.0f, 0.001f, 0.35f), 5.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("segMs", "Segment Length", juce::NormalisableRange<float>(60.0f, 2500.0f, 0.1f, 0.4f), 280.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("melody", "Melody", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 56.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("spread", "Pitch Spread", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 48.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("reverse", "Reverse Chance", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 22.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("flutter", "Flutter", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 16.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>("blur", "Blur", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 24.0f));
+    }
     else
     {
         params.push_back(std::make_unique<juce::AudioParameterFloat>("digital", "Digital", juce::NormalisableRange<float>(0.0f, 100.0f, 0.01f), 45.0f));
@@ -581,7 +645,7 @@ std::vector<DigitalisAudioProcessor::FactoryPreset> DigitalisAudioProcessor::cre
     if (kPluginIndex == 4)
     {
         return {
-            make("Init", {{ "brutal", 4.0f }, { "gridMode", 1.0f }, { "stepDiv", 0.0f }, { "zipper", 0.0f }, { "levels", 64.0f }, { "phaseLock", 0.0f }, { "jitter", 0.0f }, { "mix", 100.0f }, { "autolevel", 54.0f }, { "safety", 58.0f }, { "output", 1.5f } }),
+            make("Init", {{ "brutal", 42.0f }, { "gridMode", 1.0f }, { "stepDiv", 4.0f }, { "zipper", 42.0f }, { "levels", 12.0f }, { "phaseLock", 72.0f }, { "jitter", 6.0f }, { "mix", 100.0f }, { "autolevel", 54.0f }, { "safety", 58.0f }, { "output", 1.5f } }),
             make("Safe Mix", {{ "brutal", 24.0f }, { "gridMode", 1.0f }, { "stepDiv", 3.0f }, { "zipper", 14.0f }, { "levels", 24.0f }, { "phaseLock", 25.0f }, { "jitter", 4.0f }, { "mix", 34.0f }, { "autolevel", 58.0f }, { "safety", 64.0f }, { "output", -1.0f } }),
             make("Subtle Stepped", {{ "brutal", 32.0f }, { "gridMode", 1.0f }, { "stepDiv", 4.0f }, { "zipper", 20.0f }, { "levels", 20.0f }, { "phaseLock", 35.0f }, { "jitter", 8.0f }, { "mix", 52.0f }, { "autolevel", 56.0f }, { "safety", 63.0f }, { "output", -0.8f } }),
             make("Subtle Quant Grid", {{ "brutal", 38.0f }, { "gridMode", 0.0f }, { "stepDiv", 4.0f }, { "zipper", 28.0f }, { "levels", 16.0f }, { "phaseLock", 46.0f }, { "jitter", 7.0f }, { "mix", 56.0f }, { "autolevel", 55.0f }, { "safety", 64.0f }, { "output", -0.9f } }),
@@ -655,6 +719,38 @@ std::vector<DigitalisAudioProcessor::FactoryPreset> DigitalisAudioProcessor::cre
             make("Extreme State Prison", {{ "determinism", 98.0f }, { "stateCount", 128.0f }, { "stateDwell", 20.0f }, { "loopMs", 60.0f }, { "hashWindow", 8.0f }, { "jumpRule", 2.0f }, { "memory", 88.0f }, { "mix", 100.0f }, { "autolevel", 39.0f }, { "safety", 80.0f }, { "output", -4.8f } }),
             make("Rhythmic Loop Grid", {{ "determinism", 74.0f }, { "stateCount", 40.0f }, { "stateDwell", 90.0f }, { "loopMs", 36.0f }, { "hashWindow", 72.0f }, { "jumpRule", 0.0f }, { "memory", 58.0f }, { "mix", 84.0f }, { "autolevel", 46.0f }, { "safety", 73.0f }, { "output", -2.5f } }),
             make("Rhythmic Hash Pulse", {{ "determinism", 80.0f }, { "stateCount", 52.0f }, { "stateDwell", 70.0f }, { "loopMs", 40.0f }, { "hashWindow", 56.0f }, { "jumpRule", 1.0f }, { "memory", 64.0f }, { "mix", 88.0f }, { "autolevel", 45.0f }, { "safety", 74.0f }, { "output", -2.8f } })
+        };
+    }
+
+    if (kPluginIndex == 9)
+    {
+        return {
+            make("Init", {{ "amount", 28.0f }, { "rateHz", 4.5f }, { "sliceMs", 36.0f }, { "repeats", 3.0f }, { "reverse", 6.0f }, { "timingJitter", 4.0f }, { "duck", 22.0f }, { "mix", 100.0f }, { "autolevel", 50.0f }, { "safety", 66.0f }, { "output", -10.0f } }),
+            make("Safe Mix", {{ "amount", 36.0f }, { "rateHz", 5.2f }, { "sliceMs", 42.0f }, { "repeats", 4.0f }, { "reverse", 10.0f }, { "timingJitter", 8.0f }, { "duck", 28.0f }, { "mix", 32.0f }, { "autolevel", 54.0f }, { "safety", 71.0f }, { "output", -1.6f } }),
+            make("Subtle Tape Twitch", {{ "amount", 40.0f }, { "rateHz", 4.0f }, { "sliceMs", 48.0f }, { "repeats", 3.0f }, { "reverse", 12.0f }, { "timingJitter", 10.0f }, { "duck", 24.0f }, { "mix", 48.0f }, { "autolevel", 53.0f }, { "safety", 70.0f }, { "output", -1.5f } }),
+            make("Subtle Chop Drift", {{ "amount", 44.0f }, { "rateHz", 6.2f }, { "sliceMs", 30.0f }, { "repeats", 4.0f }, { "reverse", 18.0f }, { "timingJitter", 14.0f }, { "duck", 30.0f }, { "mix", 52.0f }, { "autolevel", 52.0f }, { "safety", 70.0f }, { "output", -1.6f } }),
+            make("Medium Gate Repeat", {{ "amount", 62.0f }, { "rateHz", 8.0f }, { "sliceMs", 24.0f }, { "repeats", 6.0f }, { "reverse", 20.0f }, { "timingJitter", 16.0f }, { "duck", 42.0f }, { "mix", 74.0f }, { "autolevel", 50.0f }, { "safety", 73.0f }, { "output", -2.2f } }),
+            make("Medium Vinyl Skip", {{ "amount", 68.0f }, { "rateHz", 10.0f }, { "sliceMs", 18.0f }, { "repeats", 7.0f }, { "reverse", 30.0f }, { "timingJitter", 24.0f }, { "duck", 48.0f }, { "mix", 78.0f }, { "autolevel", 49.0f }, { "safety", 74.0f }, { "output", -2.4f } }),
+            make("Extreme Machine Gun", {{ "amount", 92.0f }, { "rateHz", 16.0f }, { "sliceMs", 12.0f }, { "repeats", 12.0f }, { "reverse", 24.0f }, { "timingJitter", 20.0f }, { "duck", 64.0f }, { "mix", 100.0f }, { "autolevel", 45.0f }, { "safety", 80.0f }, { "output", -3.2f } }),
+            make("Extreme Reverse Shred", {{ "amount", 96.0f }, { "rateHz", 14.0f }, { "sliceMs", 14.0f }, { "repeats", 14.0f }, { "reverse", 86.0f }, { "timingJitter", 28.0f }, { "duck", 72.0f }, { "mix", 100.0f }, { "autolevel", 43.0f }, { "safety", 82.0f }, { "output", -3.8f } }),
+            make("Rhythmic 16th Chop", {{ "amount", 78.0f }, { "rateHz", 8.0f }, { "sliceMs", 22.0f }, { "repeats", 8.0f }, { "reverse", 14.0f }, { "timingJitter", 8.0f }, { "duck", 52.0f }, { "mix", 84.0f }, { "autolevel", 48.0f }, { "safety", 76.0f }, { "output", -2.6f } }),
+            make("Rhythmic Triplet Jam", {{ "amount", 82.0f }, { "rateHz", 6.0f }, { "sliceMs", 28.0f }, { "repeats", 9.0f }, { "reverse", 22.0f }, { "timingJitter", 12.0f }, { "duck", 56.0f }, { "mix", 86.0f }, { "autolevel", 47.0f }, { "safety", 77.0f }, { "output", -2.8f } })
+        };
+    }
+
+    if (kPluginIndex == 10)
+    {
+        return {
+            make("Init", {{ "skip", 80.0f }, { "jumpRate", 3.8f }, { "segMs", 220.0f }, { "melody", 60.0f }, { "spread", 72.0f }, { "reverse", 34.0f }, { "flutter", 46.0f }, { "blur", 14.0f }, { "mix", 100.0f }, { "autolevel", 47.0f }, { "safety", 68.0f }, { "output", -10.7f } }),
+            make("Safe Mix", {{ "skip", 42.0f }, { "jumpRate", 4.8f }, { "segMs", 46.0f }, { "melody", 46.0f }, { "spread", 44.0f }, { "reverse", 14.0f }, { "flutter", 12.0f }, { "blur", 24.0f }, { "mix", 30.0f }, { "autolevel", 52.0f }, { "safety", 71.0f }, { "output", -1.8f } }),
+            make("Subtle Disk Fray", {{ "skip", 48.0f }, { "jumpRate", 5.6f }, { "segMs", 34.0f }, { "melody", 52.0f }, { "spread", 42.0f }, { "reverse", 16.0f }, { "flutter", 16.0f }, { "blur", 26.0f }, { "mix", 46.0f }, { "autolevel", 50.0f }, { "safety", 72.0f }, { "output", -1.7f } }),
+            make("Subtle Pitch Skips", {{ "skip", 54.0f }, { "jumpRate", 6.2f }, { "segMs", 30.0f }, { "melody", 62.0f }, { "spread", 58.0f }, { "reverse", 18.0f }, { "flutter", 20.0f }, { "blur", 28.0f }, { "mix", 52.0f }, { "autolevel", 49.0f }, { "safety", 72.0f }, { "output", -1.9f } }),
+            make("Medium Oval Cutups", {{ "skip", 68.0f }, { "jumpRate", 7.8f }, { "segMs", 24.0f }, { "melody", 72.0f }, { "spread", 68.0f }, { "reverse", 22.0f }, { "flutter", 24.0f }, { "blur", 34.0f }, { "mix", 74.0f }, { "autolevel", 47.0f }, { "safety", 74.0f }, { "output", -2.4f } }),
+            make("Medium Overcomes Drift", {{ "skip", 74.0f }, { "jumpRate", 8.5f }, { "segMs", 22.0f }, { "melody", 80.0f }, { "spread", 76.0f }, { "reverse", 26.0f }, { "flutter", 30.0f }, { "blur", 36.0f }, { "mix", 78.0f }, { "autolevel", 46.0f }, { "safety", 75.0f }, { "output", -2.6f } }),
+            make("Extreme CD Collapse", {{ "skip", 94.0f }, { "jumpRate", 12.0f }, { "segMs", 16.0f }, { "melody", 92.0f }, { "spread", 88.0f }, { "reverse", 34.0f }, { "flutter", 42.0f }, { "blur", 44.0f }, { "mix", 100.0f }, { "autolevel", 42.0f }, { "safety", 80.0f }, { "output", -3.4f } }),
+            make("Extreme Melodic Shatter", {{ "skip", 98.0f }, { "jumpRate", 14.5f }, { "segMs", 12.0f }, { "melody", 100.0f }, { "spread", 96.0f }, { "reverse", 52.0f }, { "flutter", 52.0f }, { "blur", 48.0f }, { "mix", 100.0f }, { "autolevel", 40.0f }, { "safety", 83.0f }, { "output", -3.9f } }),
+            make("Rhythmic Quarter Skip", {{ "skip", 76.0f }, { "jumpRate", 4.0f }, { "segMs", 36.0f }, { "melody", 70.0f }, { "spread", 64.0f }, { "reverse", 16.0f }, { "flutter", 20.0f }, { "blur", 30.0f }, { "mix", 82.0f }, { "autolevel", 45.0f }, { "safety", 77.0f }, { "output", -2.8f } }),
+            make("Rhythmic Trip Skipline", {{ "skip", 82.0f }, { "jumpRate", 6.0f }, { "segMs", 26.0f }, { "melody", 84.0f }, { "spread", 78.0f }, { "reverse", 24.0f }, { "flutter", 28.0f }, { "blur", 34.0f }, { "mix", 86.0f }, { "autolevel", 44.0f }, { "safety", 78.0f }, { "output", -3.0f } })
         };
     }
 
@@ -1089,8 +1185,8 @@ void DigitalisAudioProcessor::processAutomationQuantiser(juce::AudioBuffer<float
 
     const auto channels = getTotalNumInputChannels();
     const auto samples = buffer.getNumSamples();
-    const auto quantLevels = juce::jmax(2, levels);
-    const auto lfoRate = juce::jmap(brutal, 0.2f, 18.0f);
+    const auto quantLevels = juce::jmax(2, static_cast<int>(std::round(juce::jmap(brutal, static_cast<float>(levels), juce::jmax(2.0f, static_cast<float>(levels) * 0.2f)))));
+    const auto lfoRate = juce::jmap(brutal, 1.0f, 42.0f);
 
     for (int ch = 0; ch < channels; ++ch)
     {
@@ -1133,16 +1229,17 @@ void DigitalisAudioProcessor::processAutomationQuantiser(juce::AudioBuffer<float
                 aqHeldCounter[c] = jitterHold;
             }
 
-            const auto modulation = juce::jmap(brutal, 0.0f, 1.0f, 0.1f, aqHeldAmp[c]);
+            const auto modulationDepth = juce::jmap(brutal, 0.2f, 1.0f);
+            const auto modulation = juce::jmap(modulationDepth, 1.0f, aqHeldAmp[c]);
             auto y = write[i] * modulation;
 
             if (stepped)
             {
                 const auto zipperDelta = aqHeldAmp[c] - prevAmp;
-                y += zipperDelta * zipper * 0.35f * std::copysign(1.0f, y == 0.0f ? 1.0f : y);
+                y += zipperDelta * zipper * juce::jmap(brutal, 0.3f, 0.9f) * std::copysign(1.0f, y == 0.0f ? 1.0f : y);
             }
 
-            write[i] = std::tanh(y * juce::jmap(brutal, 1.0f, 1.8f));
+            write[i] = std::tanh(y * juce::jmap(brutal, 1.2f, 3.2f));
         }
     }
 }
@@ -1514,6 +1611,200 @@ void DigitalisAudioProcessor::processDeterministicMachine(juce::AudioBuffer<floa
             y = quantise(y, static_cast<float>(stateLevels));
 
             write[i] = juce::jlimit(-1.0f, 1.0f, std::tanh(y * juce::jmap(determinism, 1.0f, 2.2f)));
+        }
+    }
+}
+
+void DigitalisAudioProcessor::processClassicBufferStutter(juce::AudioBuffer<float>& buffer)
+{
+    const auto amount = parameters.getRawParameterValue("amount")->load() * 0.01f;
+    const auto rateHz = parameters.getRawParameterValue("rateHz")->load();
+    const auto sliceMs = parameters.getRawParameterValue("sliceMs")->load();
+    const auto repeats = juce::jmax(1, static_cast<int>(std::round(parameters.getRawParameterValue("repeats")->load())));
+    const auto reverseChance = parameters.getRawParameterValue("reverse")->load() * 0.01f;
+    const auto timingJitter = parameters.getRawParameterValue("timingJitter")->load() * 0.01f;
+    const auto duck = parameters.getRawParameterValue("duck")->load() * 0.01f;
+
+    const auto channels = getTotalNumInputChannels();
+    const auto samples = buffer.getNumSamples();
+    const auto maxSliceLength = juce::jmax(64, static_cast<int>(0.5 * currentSampleRate));
+    const auto sliceLength = juce::jlimit(16, maxSliceLength,
+                                          static_cast<int>(std::round(sliceMs * 0.001 * currentSampleRate)));
+    const auto baseInterval = juce::jmax(sliceLength + 1, static_cast<int>(std::round(currentSampleRate / juce::jmax(0.25f, rateHz))));
+    const auto triggerProb = juce::jmap(amount, 0.04f, 1.0f);
+    const auto inputDuck = juce::jmap(duck, 1.0f, 0.22f);
+
+    for (int ch = 0; ch < channels; ++ch)
+    {
+        const auto c = static_cast<size_t>(ch);
+        auto* write = buffer.getWritePointer(ch);
+        auto& slice = stutterSliceBuffer[c];
+
+        if ((int) slice.size() < maxSliceLength)
+            slice.assign((size_t) maxSliceLength, 0.0f);
+
+        for (int i = 0; i < samples; ++i)
+        {
+            const auto in = write[i];
+            auto out = in;
+
+            if (!stutterIsCapturing[c] && !stutterIsPlaying[c])
+            {
+                if (--stutterIntervalCounter[c] <= 0)
+                {
+                    if (random.nextFloat() < triggerProb)
+                    {
+                        stutterIsCapturing[c] = true;
+                        stutterCapturePos[c] = 0;
+                        stutterIsReverse[c] = random.nextFloat() < reverseChance;
+                    }
+
+                    auto jitteredInterval = baseInterval;
+                    if (timingJitter > 0.0f)
+                    {
+                        const auto offset = static_cast<int>(std::round((random.nextFloat() * 2.0f - 1.0f) * timingJitter * 0.4f * static_cast<float>(baseInterval)));
+                        jitteredInterval = juce::jmax(sliceLength + 1, baseInterval + offset);
+                    }
+                    stutterIntervalCounter[c] = jitteredInterval;
+                }
+            }
+
+            if (stutterIsCapturing[c])
+            {
+                slice[(size_t) stutterCapturePos[c]] = in;
+                ++stutterCapturePos[c];
+                out = in * inputDuck;
+
+                if (stutterCapturePos[c] >= sliceLength)
+                {
+                    stutterIsCapturing[c] = false;
+                    stutterIsPlaying[c] = true;
+                    stutterRepeatsRemaining[c] = repeats;
+                    stutterPlayPos[c] = stutterIsReverse[c] ? (sliceLength - 1) : 0;
+                }
+            }
+            else if (stutterIsPlaying[c])
+            {
+                out = slice[(size_t) juce::jlimit(0, sliceLength - 1, stutterPlayPos[c])];
+                if (stutterIsReverse[c])
+                    --stutterPlayPos[c];
+                else
+                    ++stutterPlayPos[c];
+
+                const auto wrapped = stutterIsReverse[c] ? (stutterPlayPos[c] < 0) : (stutterPlayPos[c] >= sliceLength);
+                if (wrapped)
+                {
+                    --stutterRepeatsRemaining[c];
+                    stutterPlayPos[c] = stutterIsReverse[c] ? (sliceLength - 1) : 0;
+                    if (stutterRepeatsRemaining[c] <= 0)
+                        stutterIsPlaying[c] = false;
+                }
+            }
+
+            write[i] = juce::jlimit(-1.0f, 1.0f, std::tanh(out * juce::jmap(amount, 1.0f, 1.5f)));
+        }
+    }
+}
+
+void DigitalisAudioProcessor::processMelodicSkippingEngine(juce::AudioBuffer<float>& buffer)
+{
+    const auto skip = parameters.getRawParameterValue("skip")->load() * 0.01f;
+    const auto jumpRate = parameters.getRawParameterValue("jumpRate")->load();
+    const auto segMs = parameters.getRawParameterValue("segMs")->load();
+    const auto melody = parameters.getRawParameterValue("melody")->load() * 0.01f;
+    const auto spread = parameters.getRawParameterValue("spread")->load() * 0.01f;
+    const auto reverseChance = parameters.getRawParameterValue("reverse")->load() * 0.01f;
+    const auto flutter = parameters.getRawParameterValue("flutter")->load() * 0.01f;
+    const auto blur = parameters.getRawParameterValue("blur")->load() * 0.01f;
+
+    const auto channels = getTotalNumInputChannels();
+    const auto samples = buffer.getNumSamples();
+    const auto segLength = juce::jlimit(16, juce::jmax(128, static_cast<int>(1.2 * currentSampleRate)),
+                                        static_cast<int>(std::round(segMs * 0.001 * currentSampleRate)));
+    const auto triggerProbPerSample = juce::jlimit(0.0f, 1.0f, (jumpRate / static_cast<float>(juce::jmax(1.0, currentSampleRate))) * (0.2f + 0.8f * skip));
+    const auto skipDepth = std::pow(skip, 0.65f);
+    constexpr std::array<int, 15> semitones { -24, -19, -12, -9, -7, -5, -3, 0, 3, 5, 7, 9, 12, 19, 24 };
+
+    for (int ch = 0; ch < channels; ++ch)
+    {
+        const auto c = static_cast<size_t>(ch);
+        auto* write = buffer.getWritePointer(ch);
+        auto& mem = mskBuffer[c];
+        const auto memSize = static_cast<int>(mem.size());
+        if (memSize <= 32)
+            continue;
+
+        for (int i = 0; i < samples; ++i)
+        {
+            const auto in = write[i];
+            mem[(size_t) mskWritePos[c]] = in;
+            mskWritePos[c] = (mskWritePos[c] + 1) % memSize;
+
+            if (mskRemaining[c] <= 0 && random.nextFloat() < triggerProbPerSample)
+            {
+                const auto melodicSpan = juce::jlimit(1, static_cast<int>(semitones.size()) - 1,
+                                                      2 + static_cast<int>(std::round(melody * (0.5f + spread) * 12.0f)));
+                const auto center = static_cast<int>(semitones.size() / 2);
+                const auto minIndex = juce::jmax(0, center - melodicSpan);
+                const auto maxIndex = juce::jmin(static_cast<int>(semitones.size()) - 1, center + melodicSpan);
+                const auto semitone = semitones[(size_t) juce::jlimit(minIndex, maxIndex, minIndex + random.nextInt(juce::jmax(1, maxIndex - minIndex + 1)))];
+                mskRate[c] = std::pow(2.0f, static_cast<float>(semitone) / 12.0f);
+                mskDirection[c] = (random.nextFloat() < reverseChance) ? -1 : 1;
+                const auto lengthMul = juce::jmap(melody, 1.0f, 2.6f);
+                const auto baseLength = static_cast<int>(std::round(static_cast<float>(segLength) * lengthMul));
+                mskRemaining[c] = juce::jmax(16, baseLength + random.nextInt(juce::jmax(1, baseLength)));
+
+                const auto backMin = juce::jmax(segLength, static_cast<int>(0.03 * currentSampleRate));
+                const auto backMax = juce::jmin(memSize - 2, juce::jmax(backMin + 1, static_cast<int>(0.9 * currentSampleRate)));
+                const auto back = juce::jlimit(backMin, backMax, backMin + random.nextInt(juce::jmax(1, backMax - backMin + 1)));
+                auto start = mskWritePos[c] - back;
+                while (start < 0)
+                    start += memSize;
+                mskPlayPos[c] = static_cast<float>(start);
+
+                // Scratch-start tick accent.
+                write[i] = juce::jlimit(-1.0f, 1.0f, in + (random.nextFloat() * 2.0f - 1.0f) * (0.06f + 0.18f * skipDepth));
+            }
+
+            auto y = in;
+            if (mskRemaining[c] > 0)
+            {
+                auto pos = mskPlayPos[c];
+                while (pos < 0.0f)
+                    pos += static_cast<float>(memSize);
+                while (pos >= static_cast<float>(memSize))
+                    pos -= static_cast<float>(memSize);
+
+                const auto p0 = static_cast<int>(pos);
+                const auto p1 = (p0 + 1) % memSize;
+                const auto frac = pos - static_cast<float>(p0);
+                const auto a = mem[(size_t) p0];
+                const auto b = mem[(size_t) p1];
+                auto seg = a + (b - a) * frac;
+
+                const auto lpf = juce::jmap(blur, 0.92f, 0.28f);
+                mskBlurState[c] = mskBlurState[c] * lpf + seg * (1.0f - lpf);
+                seg = juce::jmap(blur, seg, mskBlurState[c]);
+
+                if (random.nextFloat() < flutter * 0.018f)
+                    mskDirection[c] = -mskDirection[c];
+
+                if (random.nextFloat() < flutter * 0.01f)
+                    mskRate[c] = juce::jlimit(0.35f, 2.6f, mskRate[c] * (0.6f + random.nextFloat() * 1.2f));
+
+                const auto flutterMod = 1.0f + std::sin((processedSamples + i + ch * 59) * 0.0024f) * flutter * 0.24f;
+                auto advance = static_cast<float>(mskDirection[c]) * mskRate[c] * flutterMod;
+                advance += std::sin((processedSamples + i + ch * 13) * 0.019f) * flutter * 0.42f; // scratch rub
+                mskPlayPos[c] += advance;
+                --mskRemaining[c];
+
+                y = juce::jmap(skipDepth, in, seg);
+
+                if (random.nextFloat() < skip * flutter * 0.01f)
+                    y *= 0.2f; // scratch dropout notch
+            }
+
+            write[i] = juce::jlimit(-1.0f, 1.0f, std::tanh(y * juce::jmap(skipDepth, 1.0f, 2.1f)));
         }
     }
 }

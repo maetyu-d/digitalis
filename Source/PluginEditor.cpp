@@ -397,6 +397,8 @@ DigitalisAudioProcessorEditor::Theme DigitalisAudioProcessorEditor::getTheme()
         case 6: return { fromHex(0x141A2C), fromHex(0x090D18), fromHex(0x12172A), fromHex(0x7FA6FF), fromHex(0xEDF3FF), fromHex(0xAAB9D8) };
         case 7: return { fromHex(0x2A1616), fromHex(0x140A0A), fromHex(0x241212), fromHex(0xFF5B5B), fromHex(0xFFEDED), fromHex(0xD5AFAF) };
         case 8: return { fromHex(0x1B2316), fromHex(0x0F140B), fromHex(0x192214), fromHex(0x9FDF5A), fromHex(0xF4FFE7), fromHex(0xB9CEA7) };
+        case 9: return { fromHex(0x22191A), fromHex(0x120D0E), fromHex(0x1D1415), fromHex(0xFF7A6A), fromHex(0xFFF1EE), fromHex(0xD4B1AB) };
+        case 10: return { fromHex(0x181E29), fromHex(0x0D121A), fromHex(0x141B25), fromHex(0x79C7FF), fromHex(0xECF7FF), fromHex(0xA8C2D6) };
         default: return { fromHex(0x1E1E1E), fromHex(0x101010), fromHex(0x1A1A1A), fromHex(0x7FC8FF), fromHex(0xF0F0F0), fromHex(0xB9B9B9) };
     }
 }
@@ -413,6 +415,8 @@ juce::String DigitalisAudioProcessorEditor::getSubtitle()
         case 6: return "FFT-domain machine hearing vandalism";
         case 7: return "CPU stress and thermal drift simulation";
         case 8: return "Finite-state microloop deterministic machine";
+        case 9: return "Classic repeat-buffer stutter workstation";
+        case 10: return "Diskont-era melodic skip and jump composer";
         default: return "Digitalis";
     }
 }
@@ -501,6 +505,26 @@ std::array<DigitalisAudioProcessorEditor::ParamSpec, 8> DigitalisAudioProcessorE
             { "memory", "Memory" },
             { "mix", "Mix Macro" }
         }};
+        case 9: return {{
+            { "amount", "Amount" },
+            { "rateHz", "Rate" },
+            { "sliceMs", "Slice Length" },
+            { "repeats", "Repeats" },
+            { "reverse", "Reverse Chance" },
+            { "timingJitter", "Timing Jitter" },
+            { "duck", "Dry Duck" },
+            { "mix", "Mix Macro" }
+        }};
+        case 10: return {{
+            { "skip", "Skip Amount" },
+            { "jumpRate", "Jump Rate" },
+            { "segMs", "Segment Length" },
+            { "melody", "Melody" },
+            { "spread", "Pitch Spread" },
+            { "reverse", "Reverse Chance" },
+            { "flutter", "Flutter" },
+            { "blur", "Blur" }
+        }};
         default: return {{
             { "digital", "Digital" },
             { "mix", "Mix" },
@@ -526,6 +550,8 @@ std::array<DigitalisAudioProcessorEditor::ParamSpec, 4> DigitalisAudioProcessorE
         case 6: return {{ { "jitter", "Spectral Jitter" }, { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "output", "Output" } }};
         case 7: return {{ { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "safety", "Safety" }, { "output", "Output" } }};
         case 8: return {{ { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "safety", "Safety" }, { "output", "Output" } }};
+        case 9: return {{ { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "safety", "Safety" }, { "output", "Output" } }};
+        case 10: return {{ { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "safety", "Safety" }, { "output", "Output" } }};
         default: return {{ { "mix", "Mix" }, { "autolevel", "Auto Level" }, { "safety", "Safety" }, { "output", "Output" } }};
     }
 }
@@ -533,7 +559,7 @@ std::array<DigitalisAudioProcessorEditor::ParamSpec, 4> DigitalisAudioProcessorE
 juce::String DigitalisAudioProcessorEditor::getAboutText()
 {
     return "Digitalis: hyper-digital signal abuse suite\\n\\n"
-           "This plugin is one module in an 8-part system with shared UX, "
+           "This plugin is one module in a 10-part system with shared UX, "
            "macro topology, and gain safety.\\n\\n"
            "Pages:\\n"
            "Main: core macro grid for fast sound design\\n"
